@@ -3,14 +3,16 @@ from pandas import DataFrame
 from sqlalchemy import create_engine
 import os
 
+
 class DataCacheHandler:
-    def __init__(self, sql_file_path, data_file_path):
+    def __init__(self, sql_file_path, data_file_path, param=None):
+        self.param = param
         self.db_config = {
             "username": "root",
             "password": "admin",
             "host": "localhost",
             "port": "3307",
-            "dbname": "qmodel"
+            "dbname": "qmodel_demo"
         }
         self.file_path = data_file_path
         self.query = open(sql_file_path, 'r').read()
@@ -25,7 +27,7 @@ class DataCacheHandler:
     def load_data(self):
         """Retrieve data from the database using the provided SQL query."""
         try:
-            return pd.read_sql(self.query, self.engine)
+            return pd.read_sql(self.query, self.engine, params={"owner": self.param})
         except Exception as e:
             print(f"Error loading data: {e}")
 

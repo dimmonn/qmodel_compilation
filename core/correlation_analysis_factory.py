@@ -28,17 +28,36 @@ class AnalysisStrategy(ABC):
                 plt.tight_layout()
                 plt.show()
 
-    def visualize_correlation(self, features, targets, results):
+    def visualize_correlation(self, features, targets, results, owner):
         pearson_corr_df = pd.DataFrame({
-            target: {feature: results[target][feature]['pearson_corr'] for feature in features} for target in targets
+            target: {
+                feature: (
+                    results.get(target, {})
+                    .get(feature, {})
+                    .get('pearson_corr')
+                )
+                for feature in features
+                if results.get(target, {}).get(feature, {}).get('pearson_corr') is not None
+            }
+            for target in targets
+
         })
         spearman_corr_df = pd.DataFrame({
-            target: {feature: results[target][feature]['spearman_corr'] for feature in features} for target in targets
+            target: {
+                feature: (
+                    results.get(target, {})
+                    .get(feature, {})
+                    .get('spearman_corr')
+                )
+                for feature in features
+                if results.get(target, {}).get(feature, {}).get('spearman_corr') is not None
+            }
+            for target in targets
         })
 
         plt.figure(figsize=(12, 6))
         sns.heatmap(pearson_corr_df, annot=True, cmap="coolwarm", fmt=".2f", linewidths=0.5)
-        plt.title("Pearson Correlation Heatmap")
+        plt.title(f"Pearson Correlation Heatmap for {owner}")
         plt.xticks(rotation=45, ha='right')
         plt.yticks(rotation=0)
         plt.tight_layout()
@@ -46,7 +65,7 @@ class AnalysisStrategy(ABC):
 
         plt.figure(figsize=(12, 6))
         sns.heatmap(spearman_corr_df, annot=True, cmap="coolwarm", fmt=".2f", linewidths=0.5)
-        plt.title("Spearman Correlation Heatmap")
+        plt.title(f"Spearman Correlation Heatmap for {owner}")
         plt.xticks(rotation=45, ha='right')
         plt.yticks(rotation=0)
         plt.tight_layout()
