@@ -13,7 +13,6 @@ class LinearRegressionAnalysis(AnalysisStrategy):
 
             X = data[features].copy()
 
-            # ---- Clean and validate ----
             X = X.apply(pd.to_numeric, errors="coerce")     # convert invalid to NaN
             X = X.dropna(axis=1, how='all')                 # remove all-NaN columns
             X = X.loc[:, X.std(ddof=0) > 0]                 # remove constant columns

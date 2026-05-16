@@ -3,17 +3,12 @@ SELECT
     pp.project_name,
     pp.id                                       AS pr_id,
 
-    -- Same target: PR review time
     TIMESTAMPDIFF(
         HOUR,
         pp.created_at,
         pp.merged_at
     )                                           AS pr_review_hours,
-
-    -- Number of bug-introducing commits in this PR
     COUNT(DISTINCT c.sha)                       AS bic_num_commits,
-
-    -- Graph metrics aggregated over bug-introducing commits
     AVG(c.min_depth_of_commit_history)          AS bic_avg_min_depth,
     AVG(c.max_depth_of_commit_history)          AS bic_avg_max_depth,
     AVG(c.distance_to_branch_start)             AS bic_avg_fp_distance,
@@ -27,7 +22,6 @@ SELECT
     AVG(c.number_of_branches)                   AS bic_avg_branches,
     AVG(c.average_degree)                       AS bic_avg_average_degree,
 
-    -- Churn / file-change metrics aggregated over bug-introducing commits
     SUM(cm.total_additions)                     AS bic_total_additions,
     SUM(cm.total_deletions)                     AS bic_total_deletions,
     SUM(cm.total_changes)                       AS bic_total_changes,
@@ -50,7 +44,6 @@ JOIN project_pull AS pp
 JOIN commit AS c
   ON c.sha = ppc.commits_sha
 
--- keep only commits that SZZ marks as bug-introducing
 JOIN project_issue_bug_introducing_commits AS pibic
   ON pibic.bug_introducing_commits_sha = c.sha
 

@@ -4,7 +4,6 @@ SELECT pr.id                                                        AS pr_id,
        TIMESTAMPDIFF(MINUTE, pr.created_at, pr.merged_at)           AS pr_review_time,
        r.reviewers                                                  AS reviewer,
 
-       -- Count of open issues assigned to the reviewer at the time of PR creation
        (SELECT COUNT(*)
         FROM project_issue i
                  JOIN project_issue_assignees a
@@ -15,7 +14,6 @@ SELECT pr.id                                                        AS pr_id,
           AND i.created_at <= pr.created_at
           AND (i.closed_at > pr.created_at OR i.closed_at IS NULL)) AS open_issues_at_time,
 
-       -- Count of open PRs assigned to the reviewer at the time of PR creation
        (SELECT COUNT(*)
         FROM project_pull p
                  JOIN project_pull_assignees a

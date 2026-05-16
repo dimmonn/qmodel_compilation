@@ -53,7 +53,6 @@ branch_labels = {
     "K": "release"
 }
 
-# Function to compute graph metrics
 def compute_graph_metrics(G):
     num_vertices = G.number_of_nodes()
     num_edges = G.number_of_edges()
@@ -77,7 +76,6 @@ def compute_graph_metrics(G):
         "maxDepthOfCommitHistory": max_depth
     }
 
-# Build and export each step
 all_nodes = []
 all_edges = []
 img_paths = []
@@ -90,13 +88,11 @@ for i, step in enumerate(steps):
     G.add_nodes_from(all_nodes)
     G.add_edges_from(all_edges)
 
-    # Compute metrics for the current step
     metrics = compute_graph_metrics(G)
     print(f"\nStep {i + 1}: Metrics for nodes {', '.join(step['nodes'])}")
     for key, val in metrics.items():
         print(f"  {key}: {val}")
 
-    # Create plot
     plt.figure(figsize=(12, 7))
     colors = [node_colors.get(n, "white") for n in G.nodes]
 
@@ -112,13 +108,11 @@ for i, step in enumerate(steps):
         linewidths=1.5
     )
 
-    # Add branch labels
     for node, label in branch_labels.items():
         if node in G.nodes:
             x, y = pos[node]
             plt.text(x, y + 0.3, label, fontsize=10, ha='center', fontstyle='italic')
 
-    # Display step and node info
     plt.title(f"Step {i + 1}: Adding {', '.join(step['nodes'])}", fontsize=14)
 
     metrics_text = "\n".join([
@@ -139,7 +133,6 @@ for i, step in enumerate(steps):
     plt.savefig(img_path, bbox_inches='tight')
     plt.close()
 
-# PowerPoint generation
 prs = Presentation()
 blank_slide_layout = prs.slide_layouts[6]
 
@@ -150,6 +143,3 @@ for path in img_paths:
 output_pptx = "git_commit_graph_complex.pptx"
 prs.save(output_pptx)
 
-# Optional cleanup
-# for path in img_paths:
-#     os.remove(path)

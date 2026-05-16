@@ -5,7 +5,7 @@ from persistence.DataCacheHandler import DataCacheHandler
 class DagToIssuesPrPearson:
     def __init__(self):
         data_handler = DataCacheHandler('../../queries/dag_to_issues_prs_future_avg.sql',
-                                        '../../persistence/files/dag_to_quality.parquet')
+                                        '../../persistence/dag_to_issues.parquet')
 
         self.data = data_handler.load_from_parquet()
         self.data.fillna(0, inplace=True)
@@ -25,7 +25,7 @@ class DagToIssuesPrPearson:
                         'num_of_issues_opened_after_commit_date']
 
         self.strategy_name = "pearson_spearman"
-        self.analysis_strategy = AnalysisFactory.get_analysis(strategy_name)
+        self.analysis_strategy = AnalysisFactory.get_analysis(self.strategy_name)
 
     def run(self):
         return self.analysis_strategy.analyze(data=self.data, features=self.features, targets=self.targets)

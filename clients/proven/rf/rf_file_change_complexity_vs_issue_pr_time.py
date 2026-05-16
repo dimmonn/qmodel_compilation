@@ -4,8 +4,8 @@ from persistence.DataCacheHandler import DataCacheHandler
 
 class RfCodeChurnToIssuePr:
     def __init__(self):
-        data_handler = DataCacheHandler('../../../queries/sp/file_change_complexity_vs_issue_pr_time.sql',
-                                        '../../../persistence/files/sp/file_change_complexity_vs_issue_pr_time.parquet')
+        data_handler = DataCacheHandler('../../../queries/file_change_complexity_vs_issue_pr_time.sql',
+                                        '../../../persistence/file_change_complexity_vs_issue_pr_time.parquet')
 
         self.data = data_handler.load_from_parquet()
         self.data.fillna(0, inplace=True)

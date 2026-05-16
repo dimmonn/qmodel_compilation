@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="SqlDialectMappings">
-    <file url="file://$PROJECT_DIR$/../qmodel_compilation/clients/proven/dag_to_issues_pr_pearson.py" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/queries/bic_mixed_graph_ci_metrics.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/dag_to_issues.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/dag_to_prs.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/fix_mixed_graph_ci_metrics.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/fixing_commits_issue_resolution_time.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/fp_dag_to_quality.sql" dialect="GenericSQL" />
+    <file url="file://$PROJECT_DIR$/queries/issue_defect_graph_ci_metrics.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/issue_fix_graph_ci_metrics.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/pull_defect_graph_ci_metrics.sql" dialect="MySQL" />
+    <file url="file://$PROJECT_DIR$/queries/pull_fix_graph_ci_metrics.sql" dialect="MySQL" />
     <file url="PROJECT" dialect="MySQL" />
   </component>
 </project>

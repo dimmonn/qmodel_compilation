@@ -18,7 +18,7 @@ class IssueDefectRQ3Models:
     Only SZZ bug-introducing commits with commit.pr_id > 0 are used.
 
     Target:
-        log_issue_resolution_hours  (log1p of hours, for heavy tails)
+        pr_review_hours  (log1p of hours, for heavy tails)
 
     Features:
         All bic_* graph and churn metrics from the SQL above.
@@ -29,7 +29,7 @@ class IssueDefectRQ3Models:
 
         data_handler = DataCacheHandler(
             '../../../queries/issue_defect_graph_ci_metrics.sql',
-            f'../../../persistence/files/issue_rq3_defect_graph_churn_pr_commits_{project_owner}.parquet',
+            f'../../../persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet',
             project_owner,
         )
 
@@ -37,38 +37,32 @@ class IssueDefectRQ3Models:
 
         df = df[df['project_owner'] == self.project_owner].copy()
 
-        df = df[df['issue_resolution_hours'].notna()].copy()
-        df['log_issue_resolution_hours'] = np.log1p(df['issue_resolution_hours'])
+        df = df[df['pr_review_hours'].notna()].copy()
+        df['pr_review_hours'] = np.log1p(df['pr_review_hours'])
 
         self.data = df
 
         self.features = [
-            "bic_num_commits",
-            "bic_avg_depth_diff",
-            "bic_max_depth_diff",
-            "bic_avg_branch_commit_rate",
-
-            "bic_avg_fp_distance",
-            "bic_max_fp_distance",
-            "bic_avg_upstream_heads",
-            "bic_max_upstream_heads",
-            "bic_avg_days_since_merge",
-            "bic_max_days_since_merge",
-            "bic_avg_in_degree",
-            "bic_avg_out_degree",
-            "bic_avg_branches",
-            "bic_avg_average_degree",
-            "bic_total_additions",
-            "bic_total_deletions",
-            "bic_total_changes",
-            "bic_avg_changes_per_file",
-            "bic_max_changes_in_file",
-            "bic_num_files_changed",
-            "bic_change_density_per_file"
+            "pr_label_count",
+            "pr_assignee_count",
+            "pr_reviewer_count",
+            "pr_timeline_event_count",
+            "pr_reaction_count",
+            "pr_num_commits",
+            "pr_graph_ready_commits",
+            "pr_churn_ready_commits",
+            "pr_ci_ready_commits",
+            "pr_contains_candidate_bic",
+            "pr_candidate_bic_commits",
+            "pr_candidate_bic_issue_links",
+            "pr_avg_min_depth",
+            "pr_avg_max_depth",
+            "pr_avg_depth_diff",
+            "pr_max_depth_diff"
         ]
 
         # ---------- TARGET ----------
-        self.targets = ['log_issue_resolution_hours']
+        self.targets = ['log_pr_review_hours']
 
     # ------------------- LINEAR REGRESSION -------------------
 
@@ -113,6 +107,8 @@ class IssueDefectRQ3Models:
         strategy.visualize_importance(rf_results, self.features, self.project_owner)
         strategy.visualize_prediction_fit(rf_results, self.project_owner)
         strategy.visualize_residuals(rf_results, self.project_owner)
+        strategy.visualize_metrics(rf_results, self.project_owner)
+
 
 
 def main():
@@ -120,6 +116,7 @@ def main():
         print(f"\n=== Defect-side RQ3 models for owner = {owner} ===")
         client = IssueDefectRQ3Models(project_owner=owner)
         lin_results = client.run_linear()
+        print(lin_results)
         client.visualize_linear(lin_results)
         rf_results = client.run_random_forest()
         client.visualize_random_forest(rf_results)

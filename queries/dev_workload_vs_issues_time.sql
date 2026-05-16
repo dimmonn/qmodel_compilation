@@ -5,7 +5,6 @@ SELECT
     TIMESTAMPDIFF(MINUTE, i.created_at, i.closed_at) AS issue_resolution_time,
     ia.assignees AS assignee,
 
-    -- Open issues assigned to this user at the time of issue creation
     (
         SELECT COUNT(*)
         FROM project_issue i2
@@ -18,7 +17,6 @@ SELECT
           AND (i2.closed_at > i.created_at OR i2.closed_at IS NULL)
     ) AS open_issues_at_time,
 
-    -- Open PRs assigned to this user at the time of issue creation
     (
         SELECT COUNT(*)
         FROM project_pull pr

@@ -4,16 +4,24 @@ from persistence.DataCacheHandler import DataCacheHandler
 
 class PsInactivityToIssuesPr:
     def __init__(self):
-        data_handler = DataCacheHandler('../../../queries/dev_workload_vs_issues_time.sql',
-                                        '../../../persistence/dev_workload_vs_issues_time.parquet')
+        data_handler = DataCacheHandler('../../../queries/fp_dag_to_quality.sql',
+                                        '../../../persistence/fp_dag_to_quality.parquet')
 
         self.data = data_handler.load_from_parquet()
         self.data.fillna(0, inplace=True)
         self.features = [
-            'open_issues_at_time',
-            'open_prs_at_time'
+            'num_of_files_changed',
+            'average_degree',
+            'in_degree',
+            'out_degree',
+            'number_of_edges',
+            'max_depth_of_commit_history',
+            'max_depth_of_commit_history',
+            'distance_to_branch_start',
+            'upstream_heads_unique_on_segment'
+
         ]
-        self.targets = ['issue_resolution_time']
+        self.targets = ['avg_issue_resolution_hours', 'avg_pr_review_hours']
 
         self.strategy_name = "pearson_spearman"
         self.analysis_strategy = AnalysisFactory.get_analysis(self.strategy_name)

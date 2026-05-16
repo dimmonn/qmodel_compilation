@@ -6,8 +6,8 @@ from core.factories.analysis_factory import AnalysisFactory
 
 class PsInactivityToIssuesPr:
     def __init__(self):
-        data_handler = DataCacheHandler('../../../queries/sp/dag_to_issues.sql',
-                                        '../../../persistence/files/sp/rf_dag_to_issues.parquet')
+        data_handler = DataCacheHandler('../../../queries/dag_to_issues.sql',
+                                        '../../../persistence/rf_dag_to_issues.parquet')
 
         self.data = data_handler.load_from_parquet()
         self.data.fillna(0, inplace=True)

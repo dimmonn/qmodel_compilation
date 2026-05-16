@@ -3,7 +3,6 @@ WITH CommitData AS (SELECT DATE(c.commit_date)                AS time,
                            c.project_name,
                            c.project_owner,
 
-                           -- Aggregate commit properties over the day
                            AVG(c.branch_length)               AS avg_branch_length,
                            MAX(c.max_depth_of_commit_history) AS max_commit_depth,
                            MIN(c.min_depth_of_commit_history) AS min_commit_depth,
@@ -32,7 +31,6 @@ SELECT c.time,
        c.project_owner,
        c.project_name,
 
-       -- New commit-related properties
        c.avg_branch_length,
        c.max_commit_depth,
        c.min_commit_depth,
@@ -43,21 +41,18 @@ SELECT c.time,
        c.max_vertices,
        c.max_files_changed,
 
-       -- Sum issues opened after commit date
        (SELECT SUM(i.issues_opened)
         FROM IssueData i
         WHERE i.project_name = c.project_name
           AND i.project_owner = c.project_owner
           AND i.issue_date > c.time)  AS num_of_issues_opened_after_commit_date,
 
-       -- Sum PRs opened after commit date
        (SELECT SUM(prs.prs_opened)
         FROM PullRequestData prs
         WHERE prs.project_name = c.project_name
           AND prs.project_owner = c.project_owner
           AND prs.pr_date > c.time)   AS num_of_prs_opened_after_commit_date,
 
-       -- Average issue resolution time in days, only for issues opened after commit date
        (SELECT AVG(TIMESTAMPDIFF(SECOND, pi.created_at, pi.closed_at)) / 86400
         FROM project_issue pi
         WHERE pi.project_name = c.project_name
@@ -65,7 +60,6 @@ SELECT c.time,
           AND pi.closed_at IS NOT NULL
           AND pi.created_at > c.time) AS avg_issue_resolution_time_days,
 
-       -- Average PR review time in days, only for PRs opened after commit date
        (SELECT AVG(TIMESTAMPDIFF(SECOND, pp.created_at, pp.merged_at)) / 86400
         FROM project_pull pp
         WHERE pp.project_name = c.project_name
