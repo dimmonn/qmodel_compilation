@@ -28,7 +28,7 @@ class IssueDefectRQ3Models:
         self.project_owner = project_owner
 
         data_handler = DataCacheHandler(
-            '../../../queries/issue_defect_graph_ci_metrics.sql',
+            '../../../queries/rq3_pr_graph_ci_metrics.sql',
             f'../../../persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet',
             project_owner,
         )
