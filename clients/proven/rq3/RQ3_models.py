@@ -4,31 +4,12 @@ from persistence.DataCacheHandler import DataCacheHandler
 
 
 class IssueDefectRQ3Models:
-    """
-    RQ3 (defect side only):
-
-        To what extent can graph and churn metrics of
-        bug-introducing commits (that belong to PRs)
-        explain issue resolution time?
-
-    SQL:
-        ../../../queries/issue_rq3_defect_graph_churn_pr_commits.sql
-
-    One row = one closed issue.
-    Only SZZ bug-introducing commits with commit.pr_id > 0 are used.
-
-    Target:
-        pr_review_hours  (log1p of hours, for heavy tails)
-
-    Features:
-        All bic_* graph and churn metrics from the SQL above.
-    """
 
     def __init__(self, project_owner: str):
         self.project_owner = project_owner
 
         data_handler = DataCacheHandler(
-            '../../../queries/rq3_pr_graph_ci_metrics.sql',
+            '../../../queries/RQ3.sql',
             f'../../../persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet',
             project_owner,
         )
@@ -37,8 +18,8 @@ class IssueDefectRQ3Models:
 
         df = df[df['project_owner'] == self.project_owner].copy()
 
-        df = df[df['pr_review_hours'].notna()].copy()
-        df['pr_review_hours'] = np.log1p(df['pr_review_hours'])
+        df = df[df['pr_review_seconds'].notna()].copy()
+        df['pr_review_seconds'] = np.log1p(df['pr_review_seconds'])
 
         self.data = df
 
@@ -62,7 +43,7 @@ class IssueDefectRQ3Models:
         ]
 
         # ---------- TARGET ----------
-        self.targets = ['log_pr_review_hours']
+        self.targets = ['log_pr_review_seconds']
 
     # ------------------- LINEAR REGRESSION -------------------
 

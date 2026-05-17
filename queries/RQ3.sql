@@ -150,7 +150,7 @@ WITH
             pp.merged_at AS pr_merged_at,
 
             TIMESTAMPDIFF(SECOND, pp.created_at, pp.merged_at) / 3600.0
-                AS pr_review_hours,
+                AS pr_review_seconds,
 
             c.sha AS commit_sha,
 
@@ -261,8 +261,8 @@ SELECT
     pcr.pr_merged_at,
 
     /* Target variables */
-    pcr.pr_review_hours,
-    LOG(1 + pcr.pr_review_hours) AS log_pr_review_hours,
+    pcr.pr_review_seconds,
+    LOG(1 + pcr.pr_review_seconds) AS log_pr_review_seconds,
 
     CASE
         WHEN MOD(CRC32(CONCAT(pcr.project_owner, ':', pcr.project_name, ':', pcr.pr_id)), 10) < 8
@@ -451,7 +451,7 @@ GROUP BY
     pcr.pr_id,
     pcr.pr_created_at,
     pcr.pr_merged_at,
-    pcr.pr_review_hours,
+    pcr.pr_review_seconds,
     pp.pr_label_count,
     pp.pr_assignee_count,
     pp.pr_reviewer_count,
