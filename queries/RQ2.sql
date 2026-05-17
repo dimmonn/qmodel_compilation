@@ -1,4 +1,3 @@
-
 WITH
     selected_projects AS (
         SELECT project_owner, project_name
