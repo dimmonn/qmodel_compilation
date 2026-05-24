@@ -2,7 +2,7 @@
 
 This repository implements a data-to-model pipeline for empirical software engineering analyses on GitHub projects (currently focused on `ansible/ansible` and `facebook/react`).
 
-The workflow is organized around three SQL research queries (`RQ1.sql`, `RQ2.sql`, `RQ3.sql`) and modeling clients (notably `clients/proven/rq3/RQ3_models.py`), with caching and strategy-based analysis infrastructure.
+The workflow is organized around three SQL research queries (`RQ1_test.sql`, `RQ1.sql`, `RQ2.sql`) and modeling clients (notably `clients/proven/rq3/RQ3_models.py`), with caching and strategy-based analysis infrastructure.
 
 ---
 
@@ -10,17 +10,17 @@ The workflow is organized around three SQL research queries (`RQ1.sql`, `RQ2.sql
 
 - **Research objective**: quantify data completeness and build analyzable datasets from commit graph, code churn, CI, and socio-technical signals.
 - **Primary artifacts**:
+  - `queries/RQ1_test.sql`
   - `queries/RQ1.sql`
   - `queries/RQ2.sql`
-  - `queries/RQ3.sql`
   - `clients/proven/rq3/RQ3_models.py`
 - **Pipeline style**: SQL feature engineering -> parquet caching -> statistical/ML analysis via strategy factory.
 
 ---
 
-## RQ1 (`queries/RQ1.sql`): Project-Level Data Coverage and Linkage Readiness
+## RQ1 (`queries/RQ1_test.sql`): Project-Level Data Coverage and Linkage Readiness
 
-`queries/RQ1.sql` produces a **project-level audit table** for repository data quality and cross-entity linkage coverage.
+`queries/RQ1_test.sql` produces a **project-level audit table** for repository data quality and cross-entity linkage coverage.
 
 ### What it computes
 
@@ -39,9 +39,9 @@ It answers whether the repository has enough complete and linked records to supp
 
 ---
 
-## RQ2 (`queries/RQ2.sql`): Computability of Aggregated Issue/PR Analysis Rows
+## RQ2 (`queries/RQ1.sql`): Computability of Aggregated Issue/PR Analysis Rows
 
-`queries/RQ2.sql` evaluates whether issue-level and PR-level rows can be consistently computed from available graph/churn evidence.
+`queries/RQ1.sql` evaluates whether issue-level and PR-level rows can be consistently computed from available graph/churn evidence.
 
 ### Constructed row families
 
@@ -70,9 +70,9 @@ It quantifies how often a complete feature/target tuple exists at the intended u
 
 ---
 
-## RQ3 (`queries/RQ3.sql`): PR-Level Modeling Dataset for Review-Time Prediction
+## RQ3 (`queries/RQ2.sql`): PR-Level Modeling Dataset for Review-Time Prediction
 
-`queries/RQ3.sql` creates a **feature-rich PR-level regression table** where each row corresponds to one pull request.
+`queries/RQ2.sql` creates a **feature-rich PR-level regression table** where each row corresponds to one pull request.
 
 ### Target variable
 
@@ -100,7 +100,7 @@ This supports reproducible model evaluation.
 
 ### Responsibilities
 
-- loads data via `DataCacheHandler` from `queries/RQ3.sql` into cached parquet;
+- loads data via `DataCacheHandler` from `queries/RQ2.sql` into cached parquet;
 - filters by `project_owner`;
 - applies target transformation (`np.log1p` on `pr_review_seconds`);
 - defines selected predictor subset (`self.features`);

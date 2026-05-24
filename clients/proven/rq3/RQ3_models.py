@@ -9,7 +9,7 @@ class IssueDefectRQ3Models:
         self.project_owner = project_owner
 
         data_handler = DataCacheHandler(
-            '../../../queries/RQ3.sql',
+            '../../../queries/RQ2.sql',
             f'../../../persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet',
             project_owner,
         )
@@ -18,8 +18,8 @@ class IssueDefectRQ3Models:
 
         df = df[df['project_owner'] == self.project_owner].copy()
 
-        df = df[df['pr_review_seconds'].notna()].copy()
-        df['pr_review_seconds'] = np.log1p(df['pr_review_seconds'])
+        df = df[df['pr_review_hours'].notna()].copy()
+        df['pr_review_hours'] = np.log1p(df['pr_review_hours'])
 
         self.data = df
 
@@ -43,7 +43,7 @@ class IssueDefectRQ3Models:
         ]
 
         # ---------- TARGET ----------
-        self.targets = ['log_pr_review_seconds']
+        self.targets = ['log_pr_review_hours']
 
     # ------------------- LINEAR REGRESSION -------------------
 

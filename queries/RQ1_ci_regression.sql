@@ -1,4 +1,10 @@
 WITH
+    selected_projects AS (
+        SELECT project_owner, project_name
+        FROM project
+        WHERE project_owner IN ('ansible', 'facebook')
+    ),
+
     commit_churn AS (
         SELECT
             cfc.commit_sha,
@@ -31,52 +37,58 @@ WITH
         SELECT
             r.commit_sha,
 
+            COUNT(*) AS ci_action_rows,
             COUNT(*) AS ci_check_runs,
             COUNT(*) AS ci_total_checks,
 
-            SUM(CASE
-                WHEN r.result_norm = 'success'
-                THEN 1 ELSE 0
-            END) AS ci_passed_checks,
+            SUM(CASE WHEN r.result_norm = 'success' THEN 1 ELSE 0 END)
+                AS ci_success_checks,
+
+            SUM(CASE WHEN r.result_norm = 'failure' THEN 1 ELSE 0 END)
+                AS ci_failure_checks,
+
+            SUM(CASE WHEN r.result_norm = 'skipped' THEN 1 ELSE 0 END)
+                AS ci_skipped_checks,
+
+            SUM(CASE WHEN r.result_norm = 'cancelled' THEN 1 ELSE 0 END)
+                AS ci_cancelled_checks,
 
             SUM(CASE
-                WHEN r.result_norm IN (
-                    'failure',
-                    'failed',
-                    'timed_out',
-                    'startup_failure',
-                    'action_required'
-                )
-                THEN 1 ELSE 0
-            END) AS ci_failed_checks,
-
-            SUM(CASE
-                WHEN r.result_norm = 'cancelled'
-                THEN 1 ELSE 0
-            END) AS ci_cancelled_checks,
-
-            SUM(CASE
-                WHEN r.result_norm NOT IN (
-                    'success',
-                    'failure',
-                    'failed',
-                    'timed_out',
-                    'startup_failure',
-                    'action_required',
-                    'cancelled'
-                )
+                WHEN r.result_norm NOT IN ('success', 'failure', 'skipped', 'cancelled')
                 THEN 1 ELSE 0
             END) AS ci_other_checks,
 
-            AVG(
-                CASE
-                    WHEN r.started_at IS NOT NULL
-                     AND r.completed_at IS NOT NULL
-                     AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
-                    THEN TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at)
-                    ELSE NULL
-                END
-            ) AS ci_avg_duration_seconds
+            SUM(CASE
+                WHEN r.started_at IS NOT NULL
+                 AND r.completed_at IS NOT NULL
+                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
+                THEN 1 ELSE 0
+            END) AS ci_duration_actions,
+
+            SUM(CASE
+                WHEN r.started_at IS NOT NULL
+                 AND r.completed_at IS NOT NULL
+                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
+                THEN TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) / 3600.0
+                ELSE 0
+            END) AS ci_total_duration_hours,
+
+            SUM(CASE
+                WHEN r.result_norm = 'success'
+                 AND r.started_at IS NOT NULL
+                 AND r.completed_at IS NOT NULL
+                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
+                THEN 1 ELSE 0
+            END) AS ci_success_duration_actions,
+
+            SUM(CASE
+                WHEN r.result_norm = 'success'
+                 AND r.started_at IS NOT NULL
+                 AND r.completed_at IS NOT NULL
+                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
+                THEN TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) / 3600.0
+                ELSE 0
+            END) AS ci_success_total_duration_hours
 
         FROM ci_result_rows r
         GROUP BY
@@ -110,6 +122,10 @@ WITH
 
         FROM project_pull pp
 
+        JOIN selected_projects sp
+          ON sp.project_owner = pp.project_owner
+         AND sp.project_name = pp.project_name
+
         LEFT JOIN project_pull_labels ppl
           ON ppl.project_pull_id = pp.id
          AND ppl.project_pull_project_name = pp.project_name
@@ -133,8 +149,6 @@ WITH
         LEFT JOIN reaction r
           ON r.id = pp.reaction_id
 
-        WHERE pp.project_owner = %(owner)s
-
         GROUP BY
             pp.project_owner,
             pp.project_name,
@@ -150,7 +164,7 @@ WITH
             pp.merged_at AS pr_merged_at,
 
             TIMESTAMPDIFF(SECOND, pp.created_at, pp.merged_at) / 3600.0
-                AS pr_review_seconds,
+                AS pr_review_hours,
 
             c.sha AS commit_sha,
 
@@ -192,13 +206,18 @@ WITH
                 ELSE NULL
             END AS change_density_per_file,
 
+            ci.ci_action_rows,
             ci.ci_check_runs,
             ci.ci_total_checks,
-            ci.ci_passed_checks,
-            ci.ci_failed_checks,
+            ci.ci_success_checks,
+            ci.ci_failure_checks,
+            ci.ci_skipped_checks,
             ci.ci_cancelled_checks,
             ci.ci_other_checks,
-            ci.ci_avg_duration_seconds,
+            ci.ci_duration_actions,
+            ci.ci_total_duration_hours,
+            ci.ci_success_duration_actions,
+            ci.ci_success_total_duration_hours,
 
             COALESCE(bic.linked_bic_issues, 0) AS linked_bic_issues,
 
@@ -223,12 +242,16 @@ WITH
             END AS churn_ready,
 
             CASE
-                WHEN ci.ci_check_runs IS NOT NULL
-                 AND ci.ci_check_runs > 0
+                WHEN ci.ci_action_rows IS NOT NULL
+                 AND ci.ci_action_rows > 0
                 THEN 1 ELSE 0
             END AS ci_ready
 
         FROM project_pull pp
+
+        JOIN selected_projects sp
+          ON sp.project_owner = pp.project_owner
+         AND sp.project_name = pp.project_name
 
         JOIN project_pull_commits ppc
           ON ppc.project_pull_id = pp.id
@@ -247,8 +270,7 @@ WITH
         LEFT JOIN bic_by_commit bic
           ON bic.commit_sha = c.sha
 
-        WHERE pp.project_owner = %(owner)s
-          AND pp.created_at IS NOT NULL
+        WHERE pp.created_at IS NOT NULL
           AND pp.merged_at IS NOT NULL
           AND TIMESTAMPDIFF(SECOND, pp.created_at, pp.merged_at) >= 0
     )
@@ -261,8 +283,8 @@ SELECT
     pcr.pr_merged_at,
 
     /* Target variables */
-    pcr.pr_review_seconds,
-    LOG(1 + pcr.pr_review_seconds) AS log_pr_review_seconds,
+    pcr.pr_review_hours,
+    LOG(1 + pcr.pr_review_hours) AS log_pr_review_hours,
 
     CASE
         WHEN MOD(CRC32(CONCAT(pcr.project_owner, ':', pcr.project_name, ':', pcr.pr_id)), 10) < 8
@@ -387,33 +409,47 @@ SELECT
     LOG(1 + SUM(COALESCE(pcr.total_changes, 0))) AS log_pr_total_changes,
     LOG(1 + SUM(COALESCE(pcr.num_files_changed, 0))) AS log_pr_num_files_changed,
 
-    /* CI features computed from action.result values */
+    /* CI features from action.result.
+       One action row = one CI/action result. */
+    SUM(COALESCE(pcr.ci_action_rows, 0)) AS pr_ci_action_rows,
     SUM(COALESCE(pcr.ci_check_runs, 0)) AS pr_ci_check_runs,
     SUM(COALESCE(pcr.ci_total_checks, 0)) AS pr_ci_total_checks,
-    SUM(COALESCE(pcr.ci_passed_checks, 0)) AS pr_ci_passed_checks,
-    SUM(COALESCE(pcr.ci_failed_checks, 0)) AS pr_ci_failed_checks,
+
+    SUM(COALESCE(pcr.ci_success_checks, 0)) AS pr_ci_success_checks,
+    SUM(COALESCE(pcr.ci_failure_checks, 0)) AS pr_ci_failure_checks,
+    SUM(COALESCE(pcr.ci_skipped_checks, 0)) AS pr_ci_skipped_checks,
     SUM(COALESCE(pcr.ci_cancelled_checks, 0)) AS pr_ci_cancelled_checks,
     SUM(COALESCE(pcr.ci_other_checks, 0)) AS pr_ci_other_checks,
 
     CASE
         WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
         THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_passed_checks, 0))
+            100.0 * SUM(COALESCE(pcr.ci_success_checks, 0))
             / SUM(COALESCE(pcr.ci_total_checks, 0)),
             2
         )
         ELSE NULL
-    END AS pr_ci_passed_percent,
+    END AS pr_ci_success_percent,
 
     CASE
         WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
         THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_failed_checks, 0))
+            100.0 * SUM(COALESCE(pcr.ci_failure_checks, 0))
             / SUM(COALESCE(pcr.ci_total_checks, 0)),
             2
         )
         ELSE NULL
-    END AS pr_ci_failed_percent,
+    END AS pr_ci_failure_percent,
+
+    CASE
+        WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
+        THEN ROUND(
+            100.0 * SUM(COALESCE(pcr.ci_skipped_checks, 0))
+            / SUM(COALESCE(pcr.ci_total_checks, 0)),
+            2
+        )
+        ELSE NULL
+    END AS pr_ci_skipped_percent,
 
     CASE
         WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
@@ -435,8 +471,32 @@ SELECT
         ELSE NULL
     END AS pr_ci_other_percent,
 
-    AVG(CASE WHEN pcr.ci_ready = 1 THEN pcr.ci_avg_duration_seconds END)
-        AS pr_ci_avg_duration_seconds
+    SUM(COALESCE(pcr.ci_duration_actions, 0)) AS pr_ci_duration_actions,
+
+    SUM(COALESCE(pcr.ci_total_duration_hours, 0))
+        AS pr_ci_total_duration_hours,
+
+    CASE
+        WHEN SUM(COALESCE(pcr.ci_duration_actions, 0)) > 0
+        THEN
+            SUM(COALESCE(pcr.ci_total_duration_hours, 0))
+            / SUM(COALESCE(pcr.ci_duration_actions, 0))
+        ELSE NULL
+    END AS pr_ci_avg_duration_hours,
+
+    SUM(COALESCE(pcr.ci_success_duration_actions, 0))
+        AS pr_ci_success_duration_actions,
+
+    SUM(COALESCE(pcr.ci_success_total_duration_hours, 0))
+        AS pr_ci_success_total_duration_hours,
+
+    CASE
+        WHEN SUM(COALESCE(pcr.ci_success_duration_actions, 0)) > 0
+        THEN
+            SUM(COALESCE(pcr.ci_success_total_duration_hours, 0))
+            / SUM(COALESCE(pcr.ci_success_duration_actions, 0))
+        ELSE NULL
+    END AS pr_ci_success_avg_duration_hours
 
 FROM pr_commit_rows pcr
 
@@ -451,7 +511,7 @@ GROUP BY
     pcr.pr_id,
     pcr.pr_created_at,
     pcr.pr_merged_at,
-    pcr.pr_review_seconds,
+    pcr.pr_review_hours,
     pp.pr_label_count,
     pp.pr_assignee_count,
     pp.pr_reviewer_count,
@@ -460,6 +520,9 @@ GROUP BY
 
 HAVING
     COUNT(DISTINCT pcr.commit_sha) > 0
+    AND SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
+    AND SUM(COALESCE(pcr.ci_action_rows, 0)) > 0
+    AND SUM(COALESCE(pcr.ci_duration_actions, 0)) > 0
 
 ORDER BY
     pcr.project_owner,
