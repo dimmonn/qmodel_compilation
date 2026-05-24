@@ -1,40 +1,65 @@
 # QModel Compilation
 
-This repository contains the SQL queries, scripts, and results for the *QModel* analysis reported in the paper. It constructs PR- and issue-level datasets by joining project metadata, graph metrics, churn, CI outcomes, and defect-provenance evidence.
-
-## Purpose
-- Materialize empirical datasets for RQ1 and RQ2 analyses from a populated *QModel* database.
-- Ensure end-to-end reproducibility of the SQL transformations and modeling steps.
+This repository contains the SQL queries, analysis scripts, and results used in the empirical evaluation of QModel (as reported in the paper). It provides end-to-end reproducibility for the RQ1 and RQ2 analyses by materializing the required datasets from a populated QModel database and running the modeling steps.
 
 ## Quick Start
 
-1. **Prerequisites:** A running MySQL/MariaDB database containing the mined *QModel* data (schema as per the mining repo). Python 3 with dependencies (e.g. `pandas`, `scikit-learn`) for modeling.
-2. **Run RQ1 (SQL dataset):**  
+1. **Prepare the database:** Ensure a MySQL/MariaDB database contains the mined QModel data (see the main qmodel) repo for mining instructions).  
+2. **Run RQ1 (SQL datasets):**  
    ```bash
-   mysql -u <user> -p -D qmodel_demo < queries/RQ1.sql
+   mysql -u <user> -p qmodel_demo < queries/RQ1.sql
    ```  
-   This executes the RQ1 dataset query (in `queries/RQ1.sql`). The query generates the analysis tables. By default, it includes a filter to keep only rows with CI action evidence (`ci_total_checks > 0`). You can remove this clause to include all rows.
+   This creates the issue-level candidate-BIC, issue-level fixing-commit, and PR-level datasets in the database.  
 3. **Run RQ2 (modeling):**  
    ```bash
    python3 clients/proven/rq3/RQ2_models.py
    ```  
-   This Python script loads the PR-level dataset (from the database), trains exploratory models, and writes results (feature importance, prediction plots) to `results/`. Adjust DB connection settings inside the script if needed.
-4. **Results:** Derived tables and figures are saved in the `results/` directory. Compare these with the paper’s reported tables.
+   This script loads the PR-level dataset from the database, trains exploratory models, and saves feature-importance figures and result tables. Edit the DB connection settings in the script as needed.  
+4. **View Results:** Derived tables and figures are saved in the `persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet` file. Compare these with the tables and plots reported in the paper.  
 
-## File Overview
 
-| Path                                      | Purpose                                      |
-|-------------------------------------------|----------------------------------------------|
-| `queries/RQ1.sql`                         | SQL for RQ1 dataset (issue-level BIC, fixing-commit, PR-level BIC) |
-| `clients/proven/rq3/RQ2_models.py`        | Python script for RQ2 modeling (PR review-time) |
-| `results/`                                | Generated result tables and figures          |
-| `requirements.txt` (if present)          | Python dependencies for modeling             |
-| `LICENSE`                                 | License (MIT/CC BY placeholder)              |
+## Architecture: `context/`, `core/`, `persistence/`
 
-## Reproduction Checklist
+### `persistence/`: Data Access + Local Caching
 
-- [ ] Ensure the *QModel* database is populated and accessible.  
-- [ ] Run the RQ1 SQL query (see Quick Start) against the database.  
-- [ ] Verify SQL completes without errors; inspect output tables (in DB or `results/`).  
-- [ ] Run the RQ2 Python script. Check that models and plots are produced in `results/`.  
-- [ ] Confirm outputs match the published tables/figures.
+`persistence/DataCacheHandler.py` implements:
+
+- DB connection creation (`SQLAlchemy` + MySQL);
+- SQL execution with optional parameter (`owner`);
+- cache materialization to CSV/Parquet/JSON/Pickle;
+- lazy load behavior: if cache file exists, load; otherwise execute query and save.
+
+This layer decouples expensive SQL extraction from repeated analysis runs.
+
+### `core/`: Strategy and Factory for Analyses
+
+- `core/factories/analysis_factory.py` maps strategy names to concrete implementations:
+  - `pearson_spearman`, `pca`, `anova`, `linear_regression`, `random_forest`, `elastic_net`.
+- `core/correlation_analysis_factory.py` defines abstract `AnalysisStrategy` plus shared visualization helpers.
+- `core/strategies/*.py` contains concrete implementations:
+  - correlation (`pearson_spearman.py`),
+  - dimensionality reduction (`pca.py`),
+  - hypothesis testing (`anova.py`),
+  - supervised regression (`linear_regression.py`, `random_forest.py`).
+
+This provides a clean, extensible analysis dispatch mechanism.
+
+### `context/`: Lightweight Execution Contexts
+
+- `context/rf_context.py` is a wrapper around `RandomForestAnalysis` for running and visualizing with a bound dataframe.
+- `context/LrContext.py` and `context/PsContext.py` currently exist but are empty placeholders.
+
+
+## Contents
+
+- `queries/RQ1.sql`: SQL query to build RQ1 analysis datasets.  
+- `clients/proven/rq3/RQ2_models.py`: Python script for RQ2 (random-forest modeling on PR data).  
+- `results/`: Generated tables and figures for RQ1 and RQ2 (for review only) and qmodel schema.  
+- `requirements.txt` (if present): Python dependencies.  
+- `README.md`, `LICENSE`: This documentation and license information.  
+
+## Notes
+
+- This repository assumes the database schema defined by the main QModel mining project.).  
+- The full QModel database can be large (on the order of hundreds of GB) because it stores raw GitHub data and derived artifacts. For practicality, this repo provides only the SQL and scripts needed to generate the reported results; the actual data dump is not included.  
+- After publication, this compilation package will be archived (e.g. on Zenodo) alongside the QModel framework for long-term access.  
