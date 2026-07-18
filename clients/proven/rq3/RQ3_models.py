@@ -9,7 +9,7 @@ class IssueDefectRQ3Models:
         self.project_owner = project_owner
 
         data_handler = DataCacheHandler(
-            '../../../queries/RQ2.sql',
+            '../../../queries/RQ3.sql',
             f'../../../persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet',
             project_owner,
         )
@@ -89,7 +89,10 @@ class IssueDefectRQ3Models:
         strategy.visualize_prediction_fit(rf_results, self.project_owner)
         strategy.visualize_residuals(rf_results, self.project_owner)
         strategy.visualize_metrics(rf_results, self.project_owner)
-
+        strategy.visualize_importance_lollipop(results=rf_results, features=self.features, owner=self.project_owner)
+        strategy.visualize_prediction_fit_hexbin(results=rf_results, owner=self.project_owner)
+        strategy.visualize_importance_treemap(results=rf_results, features=self.features, owner=self.project_owner)
+        strategy.visualize_prediction_profile(results=rf_results, owner=self.project_owner)
 
 
 def main():

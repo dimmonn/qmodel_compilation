@@ -7,12 +7,12 @@ This repository contains the SQL queries, analysis scripts, and results used in 
 1. **Prepare the database:** Ensure a MySQL/MariaDB database contains the mined QModel data (see the main qmodel) repo for mining instructions).  
 2. **Run RQ1 (SQL datasets):**  
    ```bash
-   mysql -u <user> -p qmodel_demo < queries/RQ1.sql
+   mysql -u <user> -p qmodel_demo < queries/RQ2.sql
    ```  
    This creates the issue-level candidate-BIC, issue-level fixing-commit, and PR-level datasets in the database.  
 3. **Run RQ2 (modeling):**  
    ```bash
-   python3 clients/proven/rq3/RQ2_models.py
+   python3 clients/proven/rq3/RQ3_models.py
    ```  
    This script loads the PR-level dataset from the database, trains exploratory models, and saves feature-importance figures and result tables. Edit the DB connection settings in the script as needed.  
 4. **View Results:** Derived tables and figures are saved in the `persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet` file. Compare these with the tables and plots reported in the paper.  
@@ -52,7 +52,7 @@ This provides a clean, extensible analysis dispatch mechanism.
 
 ## Contents
 
-- `queries/RQ1.sql`: SQL query to build RQ1 analysis datasets.  
+- `queries/RQ2.sql`: SQL query to build RQ1 analysis datasets.  
 - `clients/proven/rq3/RQ2_models.py`: Python script for RQ2 (random-forest modeling on PR data).  
 - `results/`: Generated tables and figures for RQ1 and RQ2 (for review only) and qmodel schema.  
 - `requirements.txt` (if present): Python dependencies.  

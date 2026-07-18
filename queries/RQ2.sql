@@ -1,524 +1,351 @@
 WITH
+    selected_projects AS (
+        SELECT project_owner, project_name
+        FROM project
+        WHERE project_owner IN ('ansible', 'facebook')
+    ),
+
     commit_churn AS (
         SELECT
-            cfc.commit_sha,
-            COUNT(DISTINCT fc.id) AS num_files_changed,
-            SUM(COALESCE(fc.total_additions, 0)) AS total_additions,
-            SUM(COALESCE(fc.total_deletions, 0)) AS total_deletions,
-            SUM(COALESCE(fc.total_changes, 0)) AS total_changes,
-            AVG(COALESCE(fc.total_changes, 0)) AS avg_changes_per_file,
-            MAX(COALESCE(fc.total_changes, 0)) AS max_changes_in_file
-        FROM commit_file_changes cfc
-        JOIN file_change fc
-          ON fc.id = cfc.file_changes_id
+            c.project_owner,
+            c.project_name,
+            c.sha,
+
+            COUNT(DISTINCT fc.id) AS files_changed,
+            SUM(fc.total_additions) AS total_additions,
+            SUM(fc.total_deletions) AS total_deletions,
+            SUM(fc.total_changes) AS total_changes,
+            AVG(fc.total_changes) AS avg_changes_per_file,
+            MAX(fc.total_changes) AS max_changes_in_file
+        FROM `commit` c
+                 JOIN selected_projects sp
+                      ON sp.project_owner = c.project_owner
+                          AND sp.project_name  = c.project_name
+                 JOIN commit_file_changes cfc
+                      ON cfc.commit_sha = c.sha
+                 JOIN file_change fc
+                      ON fc.id = cfc.file_changes_id
         GROUP BY
-            cfc.commit_sha
+            c.project_owner,
+            c.project_name,
+            c.sha
     ),
 
-    ci_result_rows AS (
+    issue_fix_rows AS (
         SELECT
-            a.commit_sha,
-            LOWER(TRIM(a.result)) AS result_norm,
-            a.started_at,
-            a.completed_at
-        FROM action a
-        WHERE a.commit_sha IS NOT NULL
-          AND a.result IS NOT NULL
-          AND TRIM(a.result) <> ''
-    ),
+            pi.project_owner,
+            pi.project_name,
+            pi.id AS analysis_id,
 
-    ci_by_commit AS (
-        SELECT
-            r.commit_sha,
+            TIMESTAMPDIFF(HOUR, pi.created_at, pi.closed_at) AS target_hours,
 
-            COUNT(*) AS ci_action_rows,
-            COUNT(*) AS ci_check_runs,
-            COUNT(*) AS ci_total_checks,
+            COUNT(DISTINCT c.sha) AS commits_in_row,
 
             SUM(CASE
-                WHEN r.result_norm = 'success'
-                THEN 1 ELSE 0
-            END) AS ci_success_checks,
+                    WHEN c.in_degree IS NOT NULL
+                        AND c.out_degree IS NOT NULL
+                        AND c.min_depth_of_commit_history IS NOT NULL
+                        AND c.max_depth_of_commit_history IS NOT NULL
+                        AND c.distance_to_branch_start IS NOT NULL
+                        AND c.upstream_heads_unique_on_segment IS NOT NULL
+                        AND c.days_since_last_merge_on_segment IS NOT NULL
+                        AND c.number_of_branches IS NOT NULL
+                        AND c.average_degree IS NOT NULL
+                        THEN 1 ELSE 0
+                END) AS graph_ready_commits,
 
             SUM(CASE
-                WHEN r.result_norm = 'failure'
-                THEN 1 ELSE 0
-            END) AS ci_failure_checks,
+                    WHEN cc.total_changes IS NOT NULL
+                        AND cc.files_changed IS NOT NULL
+                        AND cc.files_changed > 0
+                        THEN 1 ELSE 0
+                END) AS churn_ready_commits,
 
-            SUM(CASE
-                WHEN r.result_norm = 'skipped'
-                THEN 1 ELSE 0
-            END) AS ci_skipped_checks,
-
-            SUM(CASE
-                WHEN r.result_norm = 'cancelled'
-                THEN 1 ELSE 0
-            END) AS ci_cancelled_checks,
-
-            SUM(CASE
-                WHEN r.result_norm NOT IN ('success', 'failure', 'skipped', 'cancelled')
-                THEN 1 ELSE 0
-            END) AS ci_other_checks,
-
-            SUM(CASE
-                WHEN r.started_at IS NOT NULL
-                 AND r.completed_at IS NOT NULL
-                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
-                THEN 1 ELSE 0
-            END) AS ci_duration_actions,
-
-            SUM(CASE
-                WHEN r.started_at IS NOT NULL
-                 AND r.completed_at IS NOT NULL
-                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
-                THEN TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) / 3600.0
-                ELSE 0
-            END) AS ci_total_duration_hours,
-
-            SUM(CASE
-                WHEN r.result_norm = 'success'
-                 AND r.started_at IS NOT NULL
-                 AND r.completed_at IS NOT NULL
-                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
-                THEN 1 ELSE 0
-            END) AS ci_success_duration_actions,
-
-            SUM(CASE
-                WHEN r.result_norm = 'success'
-                 AND r.started_at IS NOT NULL
-                 AND r.completed_at IS NOT NULL
-                 AND TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) >= 0
-                THEN TIMESTAMPDIFF(SECOND, r.started_at, r.completed_at) / 3600.0
-                ELSE 0
-            END) AS ci_success_total_duration_hours
-
-        FROM ci_result_rows r
+            AVG(c.max_depth_of_commit_history - c.min_depth_of_commit_history) AS avg_depth_range,
+            AVG(c.distance_to_branch_start) AS avg_fp_distance,
+            AVG(c.upstream_heads_unique_on_segment) AS avg_upstream_heads,
+            AVG(c.days_since_last_merge_on_segment) AS avg_days_since_merge,
+            SUM(cc.total_changes) AS total_changes
+        FROM project_issue pi
+                 JOIN selected_projects sp
+                      ON sp.project_owner = pi.project_owner
+                          AND sp.project_name  = pi.project_name
+                 JOIN project_issue_fixing_commits pifc
+                      ON pifc.project_issue_id = pi.id
+                          AND pifc.project_issue_project_name = pi.project_name
+                          AND pifc.project_issue_project_owner = pi.project_owner
+                 JOIN `commit` c
+                      ON c.sha = pifc.fixing_commits_sha
+                 LEFT JOIN commit_churn cc
+                           ON cc.sha = c.sha
+        WHERE pi.state = 'closed'
+          AND pi.created_at IS NOT NULL
+          AND pi.closed_at IS NOT NULL
         GROUP BY
-            r.commit_sha
+            pi.project_owner,
+            pi.project_name,
+            pi.id,
+            pi.created_at,
+            pi.closed_at
     ),
 
-    bic_by_commit AS (
+    issue_bic_rows AS (
         SELECT
-            pibic.bug_introducing_commits_sha AS commit_sha,
-            COUNT(DISTINCT CONCAT(
-                pibic.project_issue_project_owner, ':',
-                pibic.project_issue_project_name, ':',
-                pibic.project_issue_id
-            )) AS linked_bic_issues
-        FROM project_issue_bug_introducing_commits pibic
+            pi.project_owner,
+            pi.project_name,
+            pi.id AS analysis_id,
+
+            TIMESTAMPDIFF(HOUR, pi.created_at, pi.closed_at) AS target_hours,
+
+            COUNT(DISTINCT c.sha) AS commits_in_row,
+
+            SUM(CASE
+                    WHEN c.in_degree IS NOT NULL
+                        AND c.out_degree IS NOT NULL
+                        AND c.min_depth_of_commit_history IS NOT NULL
+                        AND c.max_depth_of_commit_history IS NOT NULL
+                        AND c.distance_to_branch_start IS NOT NULL
+                        AND c.upstream_heads_unique_on_segment IS NOT NULL
+                        AND c.days_since_last_merge_on_segment IS NOT NULL
+                        AND c.number_of_branches IS NOT NULL
+                        AND c.average_degree IS NOT NULL
+                        THEN 1 ELSE 0
+                END) AS graph_ready_commits,
+
+            SUM(CASE
+                    WHEN cc.total_changes IS NOT NULL
+                        AND cc.files_changed IS NOT NULL
+                        AND cc.files_changed > 0
+                        THEN 1 ELSE 0
+                END) AS churn_ready_commits,
+
+            AVG(c.max_depth_of_commit_history - c.min_depth_of_commit_history) AS avg_depth_range,
+            AVG(c.distance_to_branch_start) AS avg_fp_distance,
+            AVG(c.upstream_heads_unique_on_segment) AS avg_upstream_heads,
+            AVG(c.days_since_last_merge_on_segment) AS avg_days_since_merge,
+            SUM(cc.total_changes) AS total_changes
+        FROM project_issue pi
+                 JOIN selected_projects sp
+                      ON sp.project_owner = pi.project_owner
+                          AND sp.project_name  = pi.project_name
+                 JOIN project_issue_bug_introducing_commits pibic
+                      ON pibic.project_issue_id = pi.id
+                          AND pibic.project_issue_project_name = pi.project_name
+                          AND pibic.project_issue_project_owner = pi.project_owner
+                 JOIN `commit` c
+                      ON c.sha = pibic.bug_introducing_commits_sha
+                 LEFT JOIN commit_churn cc
+                           ON cc.sha = c.sha
+        WHERE pi.state = 'closed'
+          AND pi.created_at IS NOT NULL
+          AND pi.closed_at IS NOT NULL
         GROUP BY
-            pibic.bug_introducing_commits_sha
+            pi.project_owner,
+            pi.project_name,
+            pi.id,
+            pi.created_at,
+            pi.closed_at
     ),
 
-    pr_process AS (
-        SELECT
+    pr_bic_commits AS (
+        SELECT DISTINCT
             pp.project_owner,
             pp.project_name,
             pp.id AS pr_id,
-
-            COUNT(DISTINCT ppl.labels) AS pr_label_count,
-            COUNT(DISTINCT ppa.assignees) AS pr_assignee_count,
-            COUNT(DISTINCT ppr.reviewers) AS pr_reviewer_count,
-            COUNT(DISTINCT ppt.time_line_id) AS pr_timeline_event_count,
-            COALESCE(MAX(r.total_count), 0) AS pr_reaction_count
-
+            ppc.commits_sha AS sha
         FROM project_pull pp
-
-        LEFT JOIN project_pull_labels ppl
-          ON ppl.project_pull_id = pp.id
-         AND ppl.project_pull_project_name = pp.project_name
-         AND ppl.project_pull_project_owner = pp.project_owner
-
-        LEFT JOIN project_pull_assignees ppa
-          ON ppa.project_pull_id = pp.id
-         AND ppa.project_pull_project_name = pp.project_name
-         AND ppa.project_pull_project_owner = pp.project_owner
-
-        LEFT JOIN project_pull_reviewers ppr
-          ON ppr.project_pull_id = pp.id
-         AND ppr.project_pull_project_name = pp.project_name
-         AND ppr.project_pull_project_owner = pp.project_owner
-
-        LEFT JOIN project_pull_time_line ppt
-          ON ppt.project_pull_id = pp.id
-         AND ppt.project_pull_project_name = pp.project_name
-         AND ppt.project_pull_project_owner = pp.project_owner
-
-        LEFT JOIN reaction r
-          ON r.id = pp.reaction_id
-
-        WHERE pp.project_owner = %(owner)s
-
-        GROUP BY
-            pp.project_owner,
-            pp.project_name,
-            pp.id
+                 JOIN selected_projects sp
+                      ON sp.project_owner = pp.project_owner
+                          AND sp.project_name  = pp.project_name
+                 JOIN project_pull_commits ppc
+                      ON ppc.project_pull_id = pp.id
+                          AND ppc.project_pull_project_name = pp.project_name
+                          AND ppc.project_pull_project_owner = pp.project_owner
+                 JOIN project_issue_bug_introducing_commits pibic
+                      ON pibic.bug_introducing_commits_sha = ppc.commits_sha
     ),
 
-    pr_commit_rows AS (
+    pr_bic_rows AS (
         SELECT
             pp.project_owner,
             pp.project_name,
-            pp.id AS pr_id,
-            pp.created_at AS pr_created_at,
-            pp.merged_at AS pr_merged_at,
+            pp.id AS analysis_id,
 
-            TIMESTAMPDIFF(SECOND, pp.created_at, pp.merged_at) / 3600.0
-                AS pr_review_hours,
+            TIMESTAMPDIFF(HOUR, pp.created_at, pp.merged_at) AS target_hours,
 
-            c.sha AS commit_sha,
+            COUNT(DISTINCT c.sha) AS commits_in_row,
 
-            c.min_depth_of_commit_history,
-            c.max_depth_of_commit_history,
+            SUM(CASE
+                    WHEN c.in_degree IS NOT NULL
+                        AND c.out_degree IS NOT NULL
+                        AND c.min_depth_of_commit_history IS NOT NULL
+                        AND c.max_depth_of_commit_history IS NOT NULL
+                        AND c.distance_to_branch_start IS NOT NULL
+                        AND c.upstream_heads_unique_on_segment IS NOT NULL
+                        AND c.days_since_last_merge_on_segment IS NOT NULL
+                        AND c.number_of_branches IS NOT NULL
+                        AND c.average_degree IS NOT NULL
+                        THEN 1 ELSE 0
+                END) AS graph_ready_commits,
 
-            (
-                c.max_depth_of_commit_history
-                - c.min_depth_of_commit_history
-            ) AS depth_diff,
+            SUM(CASE
+                    WHEN cc.total_changes IS NOT NULL
+                        AND cc.files_changed IS NOT NULL
+                        AND cc.files_changed > 0
+                        THEN 1 ELSE 0
+                END) AS churn_ready_commits,
 
-            c.distance_to_branch_start,
-            c.upstream_heads_unique_on_segment,
-            c.days_since_last_merge_on_segment,
-            c.in_degree,
-            c.out_degree,
-            c.number_of_branches,
-            c.average_degree,
-
-            CASE
-                WHEN c.days_since_last_merge_on_segment IS NULL
-                  OR c.distance_to_branch_start IS NULL
-                THEN NULL
-                ELSE
-                    1.0 * c.distance_to_branch_start
-                    / GREATEST(c.days_since_last_merge_on_segment, 1)
-            END AS branch_commit_rate,
-
-            cc.num_files_changed,
-            cc.total_additions,
-            cc.total_deletions,
-            cc.total_changes,
-            cc.avg_changes_per_file,
-            cc.max_changes_in_file,
-
-            CASE
-                WHEN cc.num_files_changed > 0
-                THEN 1.0 * cc.total_changes / cc.num_files_changed
-                ELSE NULL
-            END AS change_density_per_file,
-
-            ci.ci_action_rows,
-            ci.ci_check_runs,
-            ci.ci_total_checks,
-            ci.ci_success_checks,
-            ci.ci_failure_checks,
-            ci.ci_skipped_checks,
-            ci.ci_cancelled_checks,
-            ci.ci_other_checks,
-            ci.ci_duration_actions,
-            ci.ci_total_duration_hours,
-            ci.ci_success_duration_actions,
-            ci.ci_success_total_duration_hours,
-
-            COALESCE(bic.linked_bic_issues, 0) AS linked_bic_issues,
-
-            CASE
-                WHEN c.min_depth_of_commit_history IS NOT NULL
-                 AND c.max_depth_of_commit_history IS NOT NULL
-                 AND c.distance_to_branch_start IS NOT NULL
-                 AND c.upstream_heads_unique_on_segment IS NOT NULL
-                 AND c.days_since_last_merge_on_segment IS NOT NULL
-                 AND c.in_degree IS NOT NULL
-                 AND c.out_degree IS NOT NULL
-                 AND c.number_of_branches IS NOT NULL
-                 AND c.average_degree IS NOT NULL
-                THEN 1 ELSE 0
-            END AS graph_ready,
-
-            CASE
-                WHEN cc.num_files_changed IS NOT NULL
-                 AND cc.num_files_changed > 0
-                 AND cc.total_changes IS NOT NULL
-                THEN 1 ELSE 0
-            END AS churn_ready,
-
-            CASE
-                WHEN ci.ci_action_rows IS NOT NULL
-                 AND ci.ci_action_rows > 0
-                THEN 1 ELSE 0
-            END AS ci_ready
-
+            AVG(c.max_depth_of_commit_history - c.min_depth_of_commit_history) AS avg_depth_range,
+            AVG(c.distance_to_branch_start) AS avg_fp_distance,
+            AVG(c.upstream_heads_unique_on_segment) AS avg_upstream_heads,
+            AVG(c.days_since_last_merge_on_segment) AS avg_days_since_merge,
+            SUM(cc.total_changes) AS total_changes
         FROM project_pull pp
-
-        JOIN project_pull_commits ppc
-          ON ppc.project_pull_id = pp.id
-         AND ppc.project_pull_project_name = pp.project_name
-         AND ppc.project_pull_project_owner = pp.project_owner
-
-        JOIN `commit` c
-          ON c.sha = ppc.commits_sha
-
-        LEFT JOIN commit_churn cc
-          ON cc.commit_sha = c.sha
-
-        LEFT JOIN ci_by_commit ci
-          ON ci.commit_sha = c.sha
-
-        LEFT JOIN bic_by_commit bic
-          ON bic.commit_sha = c.sha
-
-        WHERE pp.project_owner = %(owner)s
+                 JOIN pr_bic_commits pbc
+                      ON pbc.pr_id = pp.id
+                          AND pbc.project_name = pp.project_name
+                          AND pbc.project_owner = pp.project_owner
+                 JOIN `commit` c
+                      ON c.sha = pbc.sha
+                 LEFT JOIN commit_churn cc
+                           ON cc.sha = c.sha
+        WHERE pp.state = 'closed'
           AND pp.created_at IS NOT NULL
           AND pp.merged_at IS NOT NULL
-          AND TIMESTAMPDIFF(SECOND, pp.created_at, pp.merged_at) >= 0
+        GROUP BY
+            pp.project_owner,
+            pp.project_name,
+            pp.id,
+            pp.created_at,
+            pp.merged_at
+    ),
+
+    all_rows AS (
+        SELECT
+            project_owner,
+            project_name,
+            'Issue-level fixing-commit dataset' AS dataset_name,
+            'issue' AS analysis_unit,
+            analysis_id,
+            target_hours,
+            commits_in_row,
+            graph_ready_commits,
+            churn_ready_commits,
+            avg_depth_range,
+            avg_fp_distance,
+            avg_upstream_heads,
+            avg_days_since_merge,
+            total_changes
+        FROM issue_fix_rows
+
+        UNION ALL
+
+        SELECT
+            project_owner,
+            project_name,
+            'Issue-level candidate-BIC dataset' AS dataset_name,
+            'issue' AS analysis_unit,
+            analysis_id,
+            target_hours,
+            commits_in_row,
+            graph_ready_commits,
+            churn_ready_commits,
+            avg_depth_range,
+            avg_fp_distance,
+            avg_upstream_heads,
+            avg_days_since_merge,
+            total_changes
+        FROM issue_bic_rows
+
+        UNION ALL
+
+        SELECT
+            project_owner,
+            project_name,
+            'PR-level candidate-BIC dataset' AS dataset_name,
+            'pull request' AS analysis_unit,
+            analysis_id,
+            target_hours,
+            commits_in_row,
+            graph_ready_commits,
+            churn_ready_commits,
+            avg_depth_range,
+            avg_fp_distance,
+            avg_upstream_heads,
+            avg_days_since_merge,
+            total_changes
+        FROM pr_bic_rows
     )
 
 SELECT
-    pcr.project_owner,
-    pcr.project_name,
-    pcr.pr_id,
-    pcr.pr_created_at,
-    pcr.pr_merged_at,
+    project_owner,
+    project_name,
+    dataset_name,
+    analysis_unit,
 
-    /* Target variables */
-    pcr.pr_review_hours,
-    LOG(1 + pcr.pr_review_hours) AS log_pr_review_hours,
+    COUNT(*) AS analysis_rows,
 
-    CASE
-        WHEN MOD(CRC32(CONCAT(pcr.project_owner, ':', pcr.project_name, ':', pcr.pr_id)), 10) < 8
-        THEN 'train'
-        ELSE 'validation'
-    END AS dataset_split,
-
-    /* Process / social features */
-    COALESCE(pp.pr_label_count, 0) AS pr_label_count,
-    COALESCE(pp.pr_assignee_count, 0) AS pr_assignee_count,
-    COALESCE(pp.pr_reviewer_count, 0) AS pr_reviewer_count,
-    COALESCE(pp.pr_timeline_event_count, 0) AS pr_timeline_event_count,
-    COALESCE(pp.pr_reaction_count, 0) AS pr_reaction_count,
-
-    /* Evidence-count features */
-    COUNT(DISTINCT pcr.commit_sha) AS pr_num_commits,
-    SUM(pcr.graph_ready) AS pr_graph_ready_commits,
-    SUM(pcr.churn_ready) AS pr_churn_ready_commits,
-    SUM(pcr.ci_ready) AS pr_ci_ready_commits,
+    SUM(CASE WHEN target_hours IS NOT NULL AND target_hours >= 0 THEN 1 ELSE 0 END)
+             AS rows_with_target_duration,
 
     ROUND(
-        1.0 * SUM(pcr.graph_ready) / NULLIF(COUNT(DISTINCT pcr.commit_sha), 0),
-        4
-    ) AS pr_graph_ready_fraction,
+            100.0 * SUM(CASE WHEN target_hours IS NOT NULL AND target_hours >= 0 THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0),
+            2
+    ) AS target_duration_computability_percent,
+
+    SUM(CASE WHEN graph_ready_commits > 0 THEN 1 ELSE 0 END)
+             AS rows_with_graph_summary,
 
     ROUND(
-        1.0 * SUM(pcr.churn_ready) / NULLIF(COUNT(DISTINCT pcr.commit_sha), 0),
-        4
-    ) AS pr_churn_ready_fraction,
+            100.0 * SUM(CASE WHEN graph_ready_commits > 0 THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0),
+            2
+    ) AS graph_summary_computability_percent,
+
+    SUM(CASE WHEN graph_ready_commits = commits_in_row THEN 1 ELSE 0 END)
+             AS rows_where_all_commits_have_graph_metrics,
 
     ROUND(
-        1.0 * SUM(pcr.ci_ready) / NULLIF(COUNT(DISTINCT pcr.commit_sha), 0),
-        4
-    ) AS pr_ci_ready_fraction,
-
-    /* Candidate defect-provenance features */
-    CASE
-        WHEN SUM(CASE WHEN pcr.linked_bic_issues > 0 THEN 1 ELSE 0 END) > 0
-        THEN 1
-        ELSE 0
-    END AS pr_contains_candidate_bic,
-
-    SUM(CASE WHEN pcr.linked_bic_issues > 0 THEN 1 ELSE 0 END)
-        AS pr_candidate_bic_commits,
-
-    SUM(pcr.linked_bic_issues) AS pr_candidate_bic_issue_links,
-
-    /* Graph-history features */
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.min_depth_of_commit_history END)
-        AS pr_avg_min_depth,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.max_depth_of_commit_history END)
-        AS pr_avg_max_depth,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.depth_diff END)
-        AS pr_avg_depth_diff,
-
-    MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.depth_diff END)
-        AS pr_max_depth_diff,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.branch_commit_rate END)
-        AS pr_avg_branch_commit_rate,
-
-    MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.branch_commit_rate END)
-        AS pr_max_branch_commit_rate,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.distance_to_branch_start END)
-        AS pr_avg_fp_distance,
-
-    MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.distance_to_branch_start END)
-        AS pr_max_fp_distance,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.upstream_heads_unique_on_segment END)
-        AS pr_avg_upstream_heads,
-
-    MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.upstream_heads_unique_on_segment END)
-        AS pr_max_upstream_heads,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.days_since_last_merge_on_segment END)
-        AS pr_avg_days_since_merge,
-
-    MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.days_since_last_merge_on_segment END)
-        AS pr_max_days_since_merge,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.in_degree END)
-        AS pr_avg_in_degree,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.out_degree END)
-        AS pr_avg_out_degree,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.number_of_branches END)
-        AS pr_avg_branches,
-
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.average_degree END)
-        AS pr_avg_average_degree,
-
-    /* Churn features */
-    SUM(COALESCE(pcr.total_additions, 0)) AS pr_total_additions,
-    SUM(COALESCE(pcr.total_deletions, 0)) AS pr_total_deletions,
-    SUM(COALESCE(pcr.total_changes, 0)) AS pr_total_changes,
-
-    AVG(CASE WHEN pcr.churn_ready = 1 THEN pcr.avg_changes_per_file END)
-        AS pr_avg_changes_per_file,
-
-    MAX(CASE WHEN pcr.churn_ready = 1 THEN pcr.max_changes_in_file END)
-        AS pr_max_changes_in_file,
-
-    SUM(COALESCE(pcr.num_files_changed, 0)) AS pr_num_files_changed,
-
-    CASE
-        WHEN SUM(COALESCE(pcr.num_files_changed, 0)) > 0
-        THEN
-            1.0 * SUM(COALESCE(pcr.total_changes, 0))
-            / SUM(COALESCE(pcr.num_files_changed, 0))
-        ELSE NULL
-    END AS pr_change_density_per_file,
-
-    /* Log-scaled count/churn features */
-    LOG(1 + COUNT(DISTINCT pcr.commit_sha)) AS log_pr_num_commits,
-    LOG(1 + SUM(COALESCE(pcr.total_additions, 0))) AS log_pr_total_additions,
-    LOG(1 + SUM(COALESCE(pcr.total_deletions, 0))) AS log_pr_total_deletions,
-    LOG(1 + SUM(COALESCE(pcr.total_changes, 0))) AS log_pr_total_changes,
-    LOG(1 + SUM(COALESCE(pcr.num_files_changed, 0))) AS log_pr_num_files_changed,
-
-    /* CI features from action.result.
-       One action row = one CI/action result. */
-    SUM(COALESCE(pcr.ci_action_rows, 0)) AS pr_ci_action_rows,
-    SUM(COALESCE(pcr.ci_check_runs, 0)) AS pr_ci_check_runs,
-    SUM(COALESCE(pcr.ci_total_checks, 0)) AS pr_ci_total_checks,
-
-    SUM(COALESCE(pcr.ci_success_checks, 0)) AS pr_ci_success_checks,
-    SUM(COALESCE(pcr.ci_failure_checks, 0)) AS pr_ci_failure_checks,
-    SUM(COALESCE(pcr.ci_skipped_checks, 0)) AS pr_ci_skipped_checks,
-    SUM(COALESCE(pcr.ci_cancelled_checks, 0)) AS pr_ci_cancelled_checks,
-    SUM(COALESCE(pcr.ci_other_checks, 0)) AS pr_ci_other_checks,
-
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
-        THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_success_checks, 0))
-            / SUM(COALESCE(pcr.ci_total_checks, 0)),
+            100.0 * SUM(CASE WHEN graph_ready_commits = commits_in_row THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0),
             2
-        )
-        ELSE NULL
-    END AS pr_ci_success_percent,
+    ) AS all_commits_graph_complete_percent,
 
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
-        THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_failure_checks, 0))
-            / SUM(COALESCE(pcr.ci_total_checks, 0)),
+    SUM(CASE WHEN churn_ready_commits > 0 THEN 1 ELSE 0 END)
+             AS rows_with_churn_summary,
+
+    ROUND(
+            100.0 * SUM(CASE WHEN churn_ready_commits > 0 THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0),
             2
-        )
-        ELSE NULL
-    END AS pr_ci_failure_percent,
+    ) AS churn_summary_computability_percent,
 
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
-        THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_skipped_checks, 0))
-            / SUM(COALESCE(pcr.ci_total_checks, 0)),
+    SUM(CASE WHEN graph_ready_commits > 0 AND churn_ready_commits > 0 THEN 1 ELSE 0 END)
+             AS rows_with_graph_and_churn_summary,
+
+    ROUND(
+            100.0 * SUM(CASE WHEN graph_ready_commits > 0 AND churn_ready_commits > 0 THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0),
             2
-        )
-        ELSE NULL
-    END AS pr_ci_skipped_percent,
+    ) AS graph_churn_summary_computability_percent,
 
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
-        THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_cancelled_checks, 0))
-            / SUM(COALESCE(pcr.ci_total_checks, 0)),
-            2
-        )
-        ELSE NULL
-    END AS pr_ci_cancelled_percent,
+    ROUND(AVG(commits_in_row), 2) AS avg_commits_per_analysis_row,
+    ROUND(AVG(graph_ready_commits), 2) AS avg_graph_ready_commits_per_row,
+    ROUND(AVG(churn_ready_commits), 2) AS avg_churn_ready_commits_per_row,
 
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_total_checks, 0)) > 0
-        THEN ROUND(
-            100.0 * SUM(COALESCE(pcr.ci_other_checks, 0))
-            / SUM(COALESCE(pcr.ci_total_checks, 0)),
-            2
-        )
-        ELSE NULL
-    END AS pr_ci_other_percent,
-
-    SUM(COALESCE(pcr.ci_duration_actions, 0)) AS pr_ci_duration_actions,
-
-    SUM(COALESCE(pcr.ci_total_duration_hours, 0))
-        AS pr_ci_total_duration_hours,
-
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_duration_actions, 0)) > 0
-        THEN
-            SUM(COALESCE(pcr.ci_total_duration_hours, 0))
-            / SUM(COALESCE(pcr.ci_duration_actions, 0))
-        ELSE NULL
-    END AS pr_ci_avg_duration_hours,
-
-    SUM(COALESCE(pcr.ci_success_duration_actions, 0))
-        AS pr_ci_success_duration_actions,
-
-    SUM(COALESCE(pcr.ci_success_total_duration_hours, 0))
-        AS pr_ci_success_total_duration_hours,
-
-    CASE
-        WHEN SUM(COALESCE(pcr.ci_success_duration_actions, 0)) > 0
-        THEN
-            SUM(COALESCE(pcr.ci_success_total_duration_hours, 0))
-            / SUM(COALESCE(pcr.ci_success_duration_actions, 0))
-        ELSE NULL
-    END AS pr_ci_success_avg_duration_hours
-
-FROM pr_commit_rows pcr
-
-LEFT JOIN pr_process pp
-  ON pp.project_owner = pcr.project_owner
- AND pp.project_name = pcr.project_name
- AND pp.pr_id = pcr.pr_id
-
+    ROUND(AVG(avg_depth_range), 4) AS avg_depth_range,
+    ROUND(AVG(avg_fp_distance), 4) AS avg_fp_distance,
+    ROUND(AVG(avg_upstream_heads), 4) AS avg_upstream_heads,
+    ROUND(AVG(avg_days_since_merge), 4) AS avg_days_since_merge,
+    ROUND(AVG(total_changes), 4) AS avg_total_changes
+FROM all_rows
 GROUP BY
-    pcr.project_owner,
-    pcr.project_name,
-    pcr.pr_id,
-    pcr.pr_created_at,
-    pcr.pr_merged_at,
-    pcr.pr_review_hours,
-    pp.pr_label_count,
-    pp.pr_assignee_count,
-    pp.pr_reviewer_count,
-    pp.pr_timeline_event_count,
-    pp.pr_reaction_count
-
-HAVING
-    COUNT(DISTINCT pcr.commit_sha) > 0
-
+    project_owner,
+    project_name,
+    dataset_name,
+    analysis_unit
 ORDER BY
-    pcr.project_owner,
-    pcr.project_name,
-    pcr.pr_id;
+    project_owner,
+    project_name,
+    dataset_name;
