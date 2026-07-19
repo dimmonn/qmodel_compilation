@@ -4,7 +4,7 @@ from persistence.DataCacheHandler import DataCacheHandler
 
 class PsInactivityToIssuesPr:
     def __init__(self):
-        data_handler = DataCacheHandler('../../../queries/dev_workload_vs_issues_time.sql',
+        data_handler = DataCacheHandler('../../../queries/sql_compilation/dev_workload_vs_issues_time.sql',
                                         '../../../persistence/dev_workload_vs_issues_time.parquet')
 
         self.data = data_handler.load_from_parquet()

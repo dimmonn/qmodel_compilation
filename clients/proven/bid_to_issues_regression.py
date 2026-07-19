@@ -5,7 +5,7 @@ from persistence.DataCacheHandler import DataCacheHandler
 
 class BidToIssuesPearsonCorrelation:
     def __init__(self):
-        data_handler = DataCacheHandler('../../queries/bug_introduced_defects_to_issues.sql',
+        data_handler = DataCacheHandler('../../queries/sql_compilation/bug_introduced_defects_to_issues.sql',
                                         '../../persistence/files/bug_introduced_defects_to_issues.parquet')
 
 

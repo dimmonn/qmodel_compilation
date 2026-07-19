@@ -4,7 +4,7 @@ from persistence.DataCacheHandler import DataCacheHandler
 
 class ChornToIssuesPCA:
     def __init__(self):
-        data_handler = DataCacheHandler('../../queries/churn_to_issues_prs_future_avg.sql',
+        data_handler = DataCacheHandler('../../queries/sql_compilation/churn_to_issues_prs_future_avg.sql',
                                         '../../persistence/files/churn_to_quality.parquet')
 
         self.data = data_handler.load_from_parquet()

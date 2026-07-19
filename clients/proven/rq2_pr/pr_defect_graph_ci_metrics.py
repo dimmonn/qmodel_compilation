@@ -20,7 +20,7 @@ class DagToPrrPearsonRQ2:
         self.project_owner = project_owner
 
         data_handler = DataCacheHandler(
-            '../../../queries/pull_defect_graph_ci_metrics.sql',
+            '../../../queries/sql_compilation/pull_defect_graph_ci_metrics.sql',
             f'../../../persistence/files/pull_defect_graph_ci_metrics_{project_owner}.parquet',
             project_owner
         )

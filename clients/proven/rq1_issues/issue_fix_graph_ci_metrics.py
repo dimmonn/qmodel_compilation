@@ -25,7 +25,7 @@ class DagToIssuesFixPearsonRQ1:
 
         # Load from SQL → parquet
         data_handler = DataCacheHandler(
-            '../../../queries/issue_fix_graph_ci_metrics.sql',
+            '../../../queries/sql_compilation/issue_fix_graph_ci_metrics.sql',
             f'../../../persistence/files/issue_fix_graph_ci_metrics_{project_owner}.parquet',
             project_owner,
         )

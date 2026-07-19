@@ -23,7 +23,7 @@ class DagToPrFixPearsonRQ2:
     def __init__(self, project_owner: str):
         self.project_owner = project_owner
         data_handler = DataCacheHandler(
-            '../../../queries/pull_fix_graph_ci_metrics.sql',
+            '../../../queries/sql_compilation/pull_fix_graph_ci_metrics.sql',
             f'../../../persistence/files/pull_fix_graph_ci_metrics_{project_owner}.parquet',
             project_owner,
         )

@@ -11,7 +11,7 @@ from persistence.DataCacheHandler import DataCacheHandler
 class RobustRegressionAnalysis:
     def __init__(self):
         data_handler = DataCacheHandler(
-            '../../../queries/file_change_complexity_vs_issue_pr_time.sql',
+            '../../../queries/sql_compilation/file_change_complexity_vs_issue_pr_time.sql',
             '../../../persistence/file_change_complexity_vs_issue_pr_time.parquet'
         )
 
