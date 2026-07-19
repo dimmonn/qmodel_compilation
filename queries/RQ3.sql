@@ -342,7 +342,7 @@ SELECT
     MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.depth_diff END)
         AS pr_max_depth_diff,
 
-    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.brFanch_commit_rate END)
+    AVG(CASE WHEN pcr.graph_ready = 1 THEN pcr.branch_commit_rate END)
         AS pr_avg_branch_commit_rate,
 
     MAX(CASE WHEN pcr.graph_ready = 1 THEN pcr.branch_commit_rate END)
