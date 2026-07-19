@@ -1,65 +1,293 @@
 # QModel Compilation
 
-This repository contains the SQL queries, analysis scripts, and results used in the empirical evaluation of QModel (as reported in the paper). It provides end-to-end reproducibility for the RQ1 and RQ2 analyses by materializing the required datasets from a populated QModel database and running the modeling steps.
+This repository contains the SQL queries, analysis scripts, dataset snapshots and selected results used in the empirical evaluation of [QModel](https://github.com/dimmonn/qmodel).
 
-## Quick Start
+The artifact supports three research questions:
 
-1. **Prepare the database:** Ensure a MySQL/MariaDB database contains the mined QModel data (see the main qmodel) repo for mining instructions).  
-2. **Run RQ1 (SQL datasets):**  
-   ```bash
-   mysql -u <user> -p qmodel_demo < queries/RQ2.sql
-   ```  
-   This creates the issue-level candidate-BIC, issue-level fixing-commit, and PR-level datasets in the database.  
-3. **Run RQ2 (modeling):**  
-   ```bash
-   python3 clients/proven/rq3/RQ3_models.py
-   ```  
-   This script loads the PR-level dataset from the database, trains exploratory models, and saves feature-importance figures and result tables. Edit the DB connection settings in the script as needed.  
-4. **View Results:** Derived tables and figures are saved in the `persistence/files/pr_rq3_review_time_graph_churn_ci_bic_{project_owner}.parquet` file. Compare these with the tables and plots reported in the paper.  
+| Research question | Purpose | Main files |
+|---|---|---|
+| RQ1 | Artifact coverage and cross-artifact linkability | `queries/RQ1.sql` |
+| RQ2 | Derived-metric computability | `queries/RQ2.sql` |
+| RQ3 | Pull-request review-time worked example | `queries/RQ3.sql`, `clients/proven/rq3/RQ3_models.py` |
 
+The complete QModel MySQL database is not distributed because of its size. Reproduction from SQL requires a compatible populated database. The `results/` directory contains selected archived outputs for comparison with a reproduced execution.
 
-## Architecture: `context/`, `core/`, `persistence/`
+## Requirements
 
-### `persistence/`: Data Access + Local Caching
+- Python 3
+- MySQL 8 or a compatible MariaDB installation
+- A populated QModel database
+- Python dependencies from `requirements.txt`
+- A Parquet engine such as `pyarrow`
 
-`persistence/DataCacheHandler.py` implements:
+Create the Python environment from the repository root:
 
-- DB connection creation (`SQLAlchemy` + MySQL);
-- SQL execution with optional parameter (`owner`);
-- cache materialization to CSV/Parquet/JSON/Pickle;
-- lazy load behavior: if cache file exists, load; otherwise execute query and save.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 
-This layer decouples expensive SQL extraction from repeated analysis runs.
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+python3 -m pip install pyarrow
+```
 
-### `core/`: Strategy and Factory for Analyses
+For a fully pinned environment, `pyarrow` should also be added to `requirements.txt`.
 
-- `core/factories/analysis_factory.py` maps strategy names to concrete implementations:
-  - `pearson_spearman`, `pca`, `anova`, `linear_regression`, `random_forest`, `elastic_net`.
-- `core/correlation_analysis_factory.py` defines abstract `AnalysisStrategy` plus shared visualization helpers.
-- `core/strategies/*.py` contains concrete implementations:
-  - correlation (`pearson_spearman.py`),
-  - dimensionality reduction (`pca.py`),
-  - hypothesis testing (`anova.py`),
-  - supervised regression (`linear_regression.py`, `random_forest.py`).
+## Database configuration
 
-This provides a clean, extensible analysis dispatch mechanism.
+The examples below assume:
 
-### `context/`: Lightweight Execution Contexts
+```bash
+export QMODEL_DB_HOST='localhost'
+export QMODEL_DB_PORT='3307'
+export QMODEL_DB_NAME='qmodel_demo'
+export QMODEL_DB_USER='root'
+```
 
-- `context/rf_context.py` is a wrapper around `RandomForestAnalysis` for running and visualizing with a bound dataframe.
-- `context/LrContext.py` and `context/PsContext.py` currently exist but are empty placeholders.
+The MySQL client prompts for the database password.
 
+The RQ3 Python analysis uses the connection settings defined in:
 
-## Contents
+```text
+persistence/DataCacheHandler.py
+```
 
-- `queries/RQ2.sql`: SQL query to build RQ1 analysis datasets.  
-- `clients/proven/rq3/RQ2_models.py`: Python script for RQ2 (random-forest modeling on PR data).  
-- `results/`: Generated tables and figures for RQ1 and RQ2 (for review only) and qmodel schema.  
-- `requirements.txt` (if present): Python dependencies.  
-- `README.md`, `LICENSE`: This documentation and license information.  
+Before running RQ3 against a database, update the following fields in that file:
 
-## Notes
+```python
+self.db_config = {
+    "username": "root",
+    "password": "admin",
+    "host": "localhost",
+    "port": "3307",
+    "dbname": "qmodel_demo"
+}
+```
 
-- This repository assumes the database schema defined by the main QModel mining project.).  
-- The full QModel database can be large (on the order of hundreds of GB) because it stores raw GitHub data and derived artifacts. For practicality, this repo provides only the SQL and scripts needed to generate the reported results; the actual data dump is not included.  
-- After publication, this compilation package will be archived (e.g. on Zenodo) alongside the QModel framework for long-term access.  
+Do not commit real passwords or other credentials.
+
+## Reproducing RQ1
+
+RQ1 reports artifact coverage and cross-artifact linkability for the evaluated projects.
+
+From the repository root:
+
+```bash
+mkdir -p reproduced-results
+
+mysql \
+  --host="$QMODEL_DB_HOST" \
+  --port="$QMODEL_DB_PORT" \
+  --user="$QMODEL_DB_USER" \
+  --password \
+  --batch \
+  --raw \
+  "$QMODEL_DB_NAME" \
+  < queries/RQ1.sql \
+  > reproduced-results/RQ1.tsv
+```
+
+The output includes artifact counts, timestamp completeness, pull-request–commit coverage, issue–pull-request link coverage, CI coverage, file-change coverage and defect-linking statistics.
+
+## Reproducing RQ2
+
+RQ2 evaluates whether graph, churn, process, CI and defect-provenance variables can be computed from the persisted artifacts.
+
+```bash
+mysql \
+  --host="$QMODEL_DB_HOST" \
+  --port="$QMODEL_DB_PORT" \
+  --user="$QMODEL_DB_USER" \
+  --password \
+  --batch \
+  --raw \
+  "$QMODEL_DB_NAME" \
+  < queries/RQ2.sql \
+  > reproduced-results/RQ2.tsv
+```
+
+The output reports computability for issue-level fixing-commit data, issue-level candidate bug-introducing commit data and pull-request-level candidate-defect data.
+
+## Reproducing RQ3
+
+RQ3 is a worked pull-request review-time analysis for:
+
+- `ansible/ansible`
+- `facebook/react`
+
+The Python script executes `queries/RQ3.sql`, constructs the pull-request-level dataset and runs the descriptive ordinary least-squares and random-forest analyses.
+
+Run it from its expected working directory:
+
+```bash
+(
+  cd clients/proven/rq3
+  PYTHONPATH=../../.. python3 RQ3_models.py
+)
+```
+
+The script:
+
+- executes `queries/RQ3.sql` when a cached dataset is unavailable;
+- creates one pull-request-level dataset for each project;
+- stores dataset caches under `persistence/files/`;
+- fits the descriptive linear-regression models;
+- evaluates the random forests using the dataset’s deterministic train/validation split;
+- prints model results and displays the diagnostic figures.
+
+The cache filenames are:
+
+```text
+persistence/files/pr_rq3_review_time_graph_churn_ci_bic_ansible.parquet
+persistence/files/pr_rq3_review_time_graph_churn_ci_bic_facebook.parquet
+```
+
+If a cache exists, `DataCacheHandler` loads it instead of executing `queries/RQ3.sql`. To force extraction from the configured database, move the existing cache files outside `persistence/files/` before running the script.
+
+## Issue–pull-request validation
+
+The row-level report used in the paper is distributed at:
+
+```text
+results/issue-pr-validation-results.csv
+```
+
+It contains 200 sampled issue–pull-request relations:
+
+- confirmed: 197
+- contradicted: 3
+- unverifiable: 0
+- confirmation proportion: 0.9850
+- 95% Wilson interval: [0.9568, 0.9949]
+
+The validation implementation is maintained in the main QModel repository:
+
+```text
+src/test/java/com/research/qmodel/validation/IssuePrDatasetValidationTest.java
+src/test/resources/validation.sql
+```
+
+To reproduce the external GitHub validation from the QModel project root:
+
+```bash
+export QMODEL_DB_URL='jdbc:mysql://localhost:3306/qmodel_demo'
+export QMODEL_DB_USER='<database-user>'
+export QMODEL_DB_PASSWORD='<database-password>'
+export GITHUB_TOKEN='<github-token>'
+
+mvn test \
+  -Dtest=IssuePrDatasetValidationTest \
+  -Dvalidation.sql=src/test/resources/validation.sql \
+  -Dvalidation.expectedRows=200 \
+  -Dvalidation.minPrecision=0.95 \
+  -Dvalidation.maxUnverifiableFraction=0.10
+```
+
+The test writes the generated report to:
+
+```text
+build/reports/qmodel/issue-pr-validation-results.csv
+```
+
+A GitHub token is required for the external semantic-validation step. Without it, only the SQL-result invariants are checked.
+
+## Database resource report
+
+The main QModel repository includes:
+
+```text
+db_report.sql
+```
+
+Run it against the populated database to report table row counts and storage consumption:
+
+```bash
+mysql \
+  --host="$QMODEL_DB_HOST" \
+  --port="$QMODEL_DB_PORT" \
+  --user="$QMODEL_DB_USER" \
+  --password \
+  "$QMODEL_DB_NAME" \
+  < ../qmodel/db_report.sql \
+  > reproduced-results/database-report.txt
+```
+
+Storage requirements depend on the selected repositories, history depth and collected artifact types.
+
+## Repository structure
+
+```text
+queries/
+  RQ1.sql
+  RQ2.sql
+  RQ3.sql
+
+clients/proven/rq3/
+  RQ3_models.py
+
+core/
+  factories/
+  strategies/
+
+persistence/
+  DataCacheHandler.py
+  files/
+
+results/
+  issue-pr-validation-results.csv
+  selected dataset snapshots and model outputs
+
+requirements.txt
+README.md
+LICENSE
+```
+
+### `persistence/`
+
+`persistence/DataCacheHandler.py` provides:
+
+- SQLAlchemy database connections;
+- SQL execution with the project-owner parameter;
+- CSV, Parquet, JSON and Pickle cache materialization;
+- reuse of existing cache files.
+
+### `core/`
+
+`core/factories/analysis_factory.py` maps analysis names to their implementations.
+
+Available strategies include:
+
+- Pearson and Spearman correlation;
+- principal component analysis;
+- analysis of variance;
+- linear regression;
+- random forest;
+- elastic net.
+
+The implementations are stored under `core/strategies/`.
+
+### `context/`
+
+The `context/` directory contains lightweight wrappers for executing selected analysis strategies with a bound dataset.
+
+## Reproducibility scope
+
+The archived outputs describe the database snapshot evaluated in the paper. Re-mining the repositories from the live GitHub API can produce different results because repositories, branches and GitHub metadata can change over time.
+
+For exact comparison with the paper:
+
+1. use the repository revisions identified in the manuscript;
+2. use a compatible snapshot of the QModel database;
+3. retain the SQL queries and configuration used for the execution;
+4. record the execution timestamp and software environment;
+5. compare regenerated outputs with the selected artifacts in `results/`.
+
+## Security
+
+Never commit:
+
+- GitHub tokens;
+- database passwords;
+- private repository data;
+- local secret-property files;
+- generated environment files containing credentials.
